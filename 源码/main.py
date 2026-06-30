@@ -355,14 +355,16 @@ class HooksManager:
             if vk is None:
                 return
             if vk == VK_OB:  # [
-                (self.on_h_left if self._shift else self.on_v_down) and (
-                    self.on_h_left() if self._shift else self.on_v_down()
-                )
+                if self._shift:
+                    self.on_h_left and self.on_h_left()
+                else:
+                    self.on_v_down and self.on_v_down()
                 return
             if vk == VK_CB:  # ]
-                (self.on_h_right if self._shift else self.on_v_up) and (
-                    self.on_h_right() if self._shift else self.on_v_up()
-                )
+                if self._shift:
+                    self.on_h_right and self.on_h_right()
+                else:
+                    self.on_v_up and self.on_v_up()
                 return
         except Exception as e:
             logger.error(f"kp err: {e}")
@@ -378,9 +380,10 @@ class HooksManager:
         try:
             if button != mouse.Button.left:
                 return
-            (self.on_md if pressed else self.on_mu) and (
-                self.on_md() if pressed else self.on_mu()
-            )
+            if pressed:
+                self.on_md and self.on_md()
+            else:
+                self.on_mu and self.on_mu()
         except Exception as e:
             logger.error(f"mc err: {e}")
 
@@ -459,8 +462,29 @@ class TuiApp:
         scr.timeout(200)
 
         while True:
-            self._snap()
             self.rows, self.cols = scr.getmaxyx()
+
+            # ── minimum terminal size check ─────────────────────
+            if self.cols < 50 or self.rows < 14:
+                scr.erase()
+                msg = f"视窗太小 ({self.cols}x{self.rows})"
+                msg2 = "请放大至至少 50x14"
+                try:
+                    scr.addstr(self.rows // 2 - 1, max(0, (self.cols - len(msg)) // 2),
+                               msg, curses.A_BOLD)
+                    scr.addstr(self.rows // 2, max(0, (self.cols - len(msg2)) // 2),
+                               msg2)
+                except curses.error:
+                    pass
+                scr.refresh()
+                key = scr.getch()
+                if key == 27:
+                    break
+                if key == curses.KEY_RESIZE:
+                    continue
+                continue
+
+            self._snap()
             self.regions.clear()
             self._draw()
             scr.refresh()
@@ -507,11 +531,14 @@ class TuiApp:
 
     @property
     def lm(self) -> int:
-        return 3
+        return max(1, self.cols // 40)  # adaptive left margin
 
     @property
     def bw(self) -> int:
-        return max(5, self.cols - 32)
+        """Bar width — fills remaining horizontal space after fixed elements."""
+        # layout: lm(1-2) + label(6) + dec(3) + gap(1) + BAR + gap(1) + val(6) + gap(1) + inc(3)
+        fixed = self.lm + 6 + 3 + 1 + 1 + 6 + 1 + 3
+        return max(3, self.cols - fixed)
 
     def _draw(self) -> None:
         s = self.scr
@@ -533,10 +560,13 @@ class TuiApp:
 
     def _header(self, y: int) -> int:
         t = " 压枪脚本 - Recoil Compensator v1.0 "
+        if self.cols < len(t) + 4:
+            t = " 压枪脚本 v1.0 "  # shorter fallback
         try:
             self.scr.attron(curses.color_pair(C_HDR))
             self.scr.addstr(y, 0, " " * self.cols)
-            self.scr.addstr(y, max(0, (self.cols - len(t)) // 2), t)
+            cx = max(0, (self.cols - len(t)) // 2)
+            self.scr.addstr(y, cx, t[: self.cols - cx])
             self.scr.attroff(curses.color_pair(C_HDR))
         except curses.error:
             pass
@@ -554,11 +584,12 @@ class TuiApp:
             s.attroff(curses.color_pair(cl) | curses.A_BOLD)
 
             btn = "[点击切换]"
-            bx = self.cols - lm - len(btn)
-            s.attron(curses.color_pair(C_BTN))
-            s.addstr(y, bx, btn)
-            s.attroff(curses.color_pair(C_BTN))
-            self.regions.append(Region(T_TG, y, bx, bx + len(btn) - 1))
+            bx = max(lm + 6 + len(label) + 2, self.cols - lm - len(btn))
+            if bx + len(btn) < self.cols - lm:
+                s.attron(curses.color_pair(C_BTN))
+                s.addstr(y, bx, btn)
+                s.attroff(curses.color_pair(C_BTN))
+                self.regions.append(Region(T_TG, y, bx, bx + len(btn) - 1))
         except curses.error:
             pass
         return y + 1
@@ -566,9 +597,8 @@ class TuiApp:
     def _draw_bar(self, y: int, x: int, w: int, val: int, mx: int = 100) -> None:
         fill = int((abs(val) / mx) * w) if mx > 0 else 0
         fill = min(fill, w)
-        bar = "█" * fill + "░" * (w - fill)
         try:
-            self.scr.addstr(y, x, bar[:w])
+            self.scr.addstr(y, x, "█" * fill + "░" * (w - fill))
         except curses.error:
             pass
 
@@ -576,31 +606,43 @@ class TuiApp:
         s = self.scr
         lm = self.lm
         w = self.bw
-
         items = [
-            ("垂直:", self.v, T_VD, T_VI, 100),
-            ("水平:", self.h, T_HD, T_HI, 100),
+            ("垂直:", self.v, T_VD, T_VI),
+            ("水平:", self.h, T_HD, T_HI),
         ]
+        # fixed positions relative to lm
+        lbl_end = lm + 5
+        dec_x = lbl_end + 1
+        bar_x = dec_x + 4  # "[-]" + 1 space
+        val_x = bar_x + w + 1
+        inc_x = val_x + 7  # " " + sign+3digits + " " = 7
 
-        for i, (lbl, val, td, ti, mx) in enumerate(items):
+        for i, (lbl, val, td, ti) in enumerate(items):
             cy = y + i
             try:
                 s.addstr(cy, lm, lbl)
+                # dec
                 db = "[-]"
                 s.attron(curses.color_pair(C_BTN))
-                s.addstr(cy, lm + 8, db)
+                s.addstr(cy, dec_x, db)
                 s.attroff(curses.color_pair(C_BTN))
-                self.regions.append(Region(td, cy, lm + 8, lm + 8 + len(db) - 1))
-                self._draw_bar(cy, lm + 13, w, val, mx)
-                prefix = "-" if val < 0 else "+" if val > 0 else " "
-                vs = f"{prefix}{abs(val):3d}"
-                s.addstr(cy, lm + 13 + w + 1, vs)
+                self.regions.append(Region(td, cy, dec_x, dec_x + len(db) - 1))
+                # bar
+                self._draw_bar(cy, bar_x, w, val, 100)
+                # value:  -XXX,  +XXX, or   XX
+                if val < 0:
+                    vs = f"-{abs(val):3d}"
+                elif val > 0:
+                    vs = f"+{abs(val):3d}"
+                else:
+                    vs = f" {abs(val):3d}"
+                s.addstr(cy, val_x, vs)
+                # inc
                 ib = "[+]"
                 s.attron(curses.color_pair(C_BTN))
-                s.addstr(cy, lm + 13 + w + 1 + len(vs) + 1, ib)
+                s.addstr(cy, inc_x, ib)
                 s.attroff(curses.color_pair(C_BTN))
-                x1 = lm + 13 + w + 1 + len(vs) + 1
-                self.regions.append(Region(ti, cy, x1, x1 + len(ib) - 1))
+                self.regions.append(Region(ti, cy, inc_x, inc_x + len(ib) - 1))
             except curses.error:
                 pass
         return y + len(items)
@@ -609,10 +651,8 @@ class TuiApp:
         s = self.scr
         lm = self.lm
         try:
-            s.addstr(y, lm, "当前武器:")
-            s.attron(curses.A_BOLD | curses.color_pair(C_HL))
-            s.addstr(y, lm + 10, f" {self.profile} ")
-            s.attroff(curses.A_BOLD | curses.color_pair(C_HL))
+            prof_label = f"当前武器: {self.profile}"
+            s.addstr(y, lm, prof_label[: self.cols - lm - 1])
         except curses.error:
             pass
 
@@ -625,6 +665,8 @@ class TuiApp:
         ]
         bx = lm
         for tag, text in btns:
+            if bx + len(text) > self.cols - lm:
+                break  # stop if buttons overflow
             try:
                 s.attron(curses.color_pair(C_BTN))
                 s.addstr(by, bx, text)
@@ -636,21 +678,43 @@ class TuiApp:
         return by + 1
 
     def _sep(self, y: int) -> None:
+        if y >= self.rows - 1:
+            return
         try:
-            self.scr.addstr(y, 1, "─" * (self.cols - 2), curses.color_pair(C_NORM))
+            self.scr.addstr(y, 0, "─" * self.cols, curses.color_pair(C_NORM))
         except curses.error:
             pass
 
     def _help(self, y: int) -> None:
         lines = [
-            " ~ 开关  |  [ 减弱垂直  ] 增强垂直  |  Shift+[ 左移  Shift+] 右移",
-            " 鼠标左键按住 = 启动压枪补偿  |  Esc = 退出  |  可用滑鼠点击按钮",
+            "~开关  [↓垂直  ]↑垂直  Shift+[←左  Shift+]→右",
+            "鼠标左键按住=压枪  Esc=退出  滑鼠点按钮操作",
         ]
         for i, line in enumerate(lines):
+            if y + i >= self.rows:
+                break
+            # truncate if too long
+            max_w = self.cols - self.lm - 1
+            display = line[:max_w] if len(line) > max_w else line
             try:
-                self.scr.addstr(y + i, self.lm, line, curses.color_pair(C_NORM))
+                self.scr.addstr(y + i, self.lm, display, curses.color_pair(C_NORM))
             except curses.error:
                 pass
+
+    def _input_box(self) -> None:
+        s = self.scr
+        y = min(self.rows - 4, max(0, self.rows - 4))
+        prompt = "输入新配置名称 (武器名字):"
+        inp = "".join(self._buf)
+        max_w = self.cols - self.lm - 2
+        try:
+            s.attron(curses.color_pair(C_HL) | curses.A_BOLD)
+            s.addstr(y, self.lm, prompt[:max_w])
+            s.attroff(curses.color_pair(C_HL) | curses.A_BOLD)
+            s.addstr(y + 1, self.lm + 1, (inp + "_")[:max_w])
+            s.addstr(y + 2, self.lm, "Enter=确认  Esc=取消")
+        except curses.error:
+            pass
 
     def _input_box(self) -> None:
         s = self.scr
@@ -676,10 +740,10 @@ class TuiApp:
             self.on_v_dec and self.on_v_dec()
         elif key in (ord("]"), 221):
             self.on_v_inc and self.on_v_inc()
-        elif key in (ord("{"), 123):
-            self.on_h_inc and self.on_h_inc()
-        elif key in (ord("}"), 125):
-            self.on_h_dec and self.on_h_dec()
+        elif key in (ord("{"), 123):            # Shift+[ = left
+            self.on_h_dec and self.on_h_dec()    # dec = decrease = more left
+        elif key in (ord("}"), 125):            # Shift+] = right
+            self.on_h_inc and self.on_h_inc()    # inc = increase = more right
 
     def _inkey(self, key: int) -> None:
         if key in (10, 13):
