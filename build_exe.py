@@ -46,29 +46,19 @@ def main():
         sys.exit(1)
 
     # ── build command ──────────────────────────────────────────
-    # --paths tells PyInstaller where to find our modules so it
-    # scans them for dependencies (unlike --add-data which copies
-    # files as data without scanning).
-    # We also explicitly --hidden-import every stdlib module our
-    # code uses, because PyInstaller 6.21.0 on per-user Python
-    # installs occasionally misses them.
+    # Single-file build: everything is in main.py, no --paths needed.
+    # Hidden imports for stdlib modules PyInstaller sometimes misses
+    # on per-user Python installs.
     hidden = [
         "ctypes", "ctypes.wintypes", "_ctypes",
-        "json",
-        "threading", "queue", "atexit",
-        "logging", "time", "traceback", "msvcrt",
-        "os", "sys",
-        "typing",
-        "curses",
-        "dataclasses", "enum",
-        "functools",
+        "json", "threading", "logging", "time",
+        "traceback", "msvcrt", "curses",
     ]
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--name", output_name,
-        "--paths", src_dir,
     ]
     for mod in hidden:
         cmd += ["--hidden-import", mod]
