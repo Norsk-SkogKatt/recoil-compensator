@@ -20,13 +20,39 @@ import traceback
 import tkinter as tk
 from tkinter import ttk
 from typing import Optional, Callable
+from glob import glob
 
 from pynput import keyboard, mouse
 
+# ── file-based logging (max 10 files, auto-rotation) ──
+_log_dir = os.path.dirname(os.path.abspath(__file__))  # same dir as exe
+# In PyInstaller bundle, __file__ is in temp dir; use exe dir instead
+if getattr(sys, 'frozen', False):
+    _log_dir = os.path.dirname(sys.executable)
+
+os.makedirs(_log_dir, exist_ok=True)
+
+# Remove old log files if > 10
+_existing = sorted(glob(os.path.join(_log_dir, "压枪脚本_*.log")))
+while len(_existing) >= 10:
+    try:
+        os.remove(_existing[0])
+        _existing = _existing[1:]
+    except OSError:
+        break
+
+_log_path = os.path.join(_log_dir, f"压枪脚本_{time.strftime('%Y-%m-%d_%H-%M-%S')}.log")
+
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[
+        logging.FileHandler(_log_path, encoding="utf-8"),
+    ],
 )
 logger = logging.getLogger("rc")
+logger.info(f"Log: {_log_path}")
 
 # ═══════════════════════════════════════════════════════════════
 # UTILITIES
@@ -590,36 +616,48 @@ def main() -> None:
     p = cfg.current_profile
     comp.set_all(p.get("vertical", 10), p.get("horizontal", 0))
 
-    _ts = 0.0
+    # ── SHARED DEBOUNCE for all hotkeys ──
+    # Both pynput hook AND tkinter key binding fire for a single key press.
+    # This debounce collapses duplicates within 150ms into one action.
+    _hk_ts = 0.0
+
+    def _hk_ok() -> bool:
+        nonlocal _hk_ts
+        t = time.time()
+        if t - _hk_ts < 0.15:
+            return False
+        _hk_ts = t
+        return True
 
     def _toggle():
-        nonlocal _ts
-        t = time.time()
-        if t - _ts < 0.15:
+        if not _hk_ok():
             return
-        _ts = t
         comp.active = not comp.active
         logger.info(f"{'开启' if comp.active else '关闭'}")
 
     def _v_up():
-        if comp.active:
-            comp.vert += 1
-            logger.info(f"V↑ {comp.vert}")
+        if not _hk_ok() or not comp.active:
+            return
+        comp.vert += 1
+        logger.info(f"V↑ {comp.vert}")
 
     def _v_down():
-        if comp.active:
-            comp.vert -= 1
-            logger.info(f"V↓ {comp.vert}")
+        if not _hk_ok() or not comp.active:
+            return
+        comp.vert -= 1
+        logger.info(f"V↓ {comp.vert}")
 
     def _h_left():
-        if comp.active:
-            comp.horiz -= 1
-            logger.info(f"H← {comp.horiz}")
+        if not _hk_ok() or not comp.active:
+            return
+        comp.horiz -= 1
+        logger.info(f"H← {comp.horiz}")
 
     def _h_right():
-        if comp.active:
-            comp.horiz += 1
-            logger.info(f"H→ {comp.horiz}")
+        if not _hk_ok() or not comp.active:
+            return
+        comp.horiz += 1
+        logger.info(f"H→ {comp.horiz}")
 
     hooks.on_toggle = _toggle
     hooks.on_v_up = _v_up
@@ -689,19 +727,21 @@ def main() -> None:
 
 
 def _entry() -> None:
+    """Entry with error fallback: write to log + message box (no console)."""
     try:
         main()
-    except Exception:
-        traceback.print_exc()
-        print("\n" + "=" * 50)
-        print("程式发生错误，上述为详细错误信息。")
-        print("=" * 50)
-        print("\n按任意键关闭窗口...", end="", flush=True)
+    except Exception as exc:
+        logger.exception("Fatal error")
+        # Also write to a crash log in the exe directory
+        crash_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else _log_dir
+        crash_path = os.path.join(crash_dir, "压枪脚本_崩溃.log")
         try:
-            import msvcrt
-            msvcrt.getch()
-        except ImportError:
-            input()
+            with open(crash_path, "w", encoding="utf-8") as f:
+                traceback.print_exc(file=f)
+        except Exception:
+            pass
+        _msgbox("压枪脚本 - 错误",
+                f"程式发生错误:\n{exc}\n\n详细错误已记录至:\n{crash_path}")
         sys.exit(1)
 
 

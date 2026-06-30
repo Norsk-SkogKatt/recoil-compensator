@@ -56,6 +56,7 @@ def main():
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
+        "--windowed",  # no console window
         "--name", output_name,
     ]
     for mod in hidden:
