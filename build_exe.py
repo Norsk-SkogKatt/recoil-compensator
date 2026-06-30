@@ -46,28 +46,36 @@ def main():
         sys.exit(1)
 
     # ── build command ──────────────────────────────────────────
-    # Use --add-data so all .py files in 源码/ are available at the
-    # temporary bundle root (flat), matching the flat imports used
-    # in main.py.
-    add_data = f"{src_dir}{os.pathsep}."
+    # --paths tells PyInstaller where to find our modules so it
+    # scans them for dependencies (unlike --add-data which copies
+    # files as data without scanning).
+    # We also explicitly --hidden-import every stdlib module our
+    # code uses, because PyInstaller 6.21.0 on per-user Python
+    # installs occasionally misses them.
+    hidden = [
+        "ctypes", "ctypes.wintypes", "_ctypes",
+        "json",
+        "threading", "queue", "atexit",
+        "logging", "time", "traceback", "msvcrt",
+        "os", "sys",
+        "typing",
+        "curses",
+        "dataclasses", "enum",
+        "functools",
+    ]
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--name", output_name,
-        "--add-data", add_data,
-        # Force-include ctypes C extension modules that PyInstaller
-        # sometimes misses on per-user Python installs.
-        "--hidden-import", "ctypes",
-        "--hidden-import", "ctypes.wintypes",
-        "--hidden-import", "_ctypes",
-        "--collect-all", "ctypes",
+        "--paths", src_dir,
         "--uac-admin",
-        "--clean",
-        "--noconfirm",
-        "--log-level", "WARN",
-        os.path.join(src_dir, "main.py"),
     ]
+    for mod in hidden:
+        cmd += ["--hidden-import", mod]
+    cmd += ["--collect-all", "ctypes"]
+    cmd += ["--clean", "--noconfirm", "--log-level", "WARN"]
+    cmd += [os.path.join(src_dir, "main.py")]
 
     print(f"[*] Building {output_name}.exe ...")
     print(f"    Command: {' '.join(cmd)}")
