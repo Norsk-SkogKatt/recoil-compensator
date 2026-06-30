@@ -183,5 +183,29 @@ def main() -> None:
         logger.info("压枪脚本已退出")
 
 
+def _run_with_error_pause() -> None:
+    """
+    Run main() and catch any unhandled exception.
+    Prints the full traceback and waits for a key press before closing,
+    so the user can read the error in the console.
+    """
+    try:
+        main()
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print("\n" + "=" * 50)
+        print("程式发生错误，上述为详细错误信息。")
+        print("请截图或记录后向开发者反馈。")
+        print("=" * 50)
+        print("\n按任意键关闭窗口...", end="", flush=True)
+        try:
+            import msvcrt
+            msvcrt.getch()
+        except ImportError:
+            input()
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    _run_with_error_pause()
