@@ -69,7 +69,6 @@ def main():
         "--onefile",
         "--name", output_name,
         "--paths", src_dir,
-        "--uac-admin",
     ]
     for mod in hidden:
         cmd += ["--hidden-import", mod]

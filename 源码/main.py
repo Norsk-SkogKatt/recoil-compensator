@@ -14,7 +14,7 @@ import curses
 import logging
 import sys
 
-from utils import is_admin, request_admin, ensure_single_instance, show_message_box
+from utils import ensure_single_instance, show_message_box
 from config_mgr import ConfigManager
 from compensator import Compensator
 from hooks import HooksManager
@@ -31,11 +31,7 @@ logger = logging.getLogger("main")
 def main() -> None:
     """Application entry point."""
 
-    # ── 1. Admin privileges ────────────────────────────────────
-    if not is_admin():
-        request_admin()   # relaunch via runas, then exits current
-
-    # ── 2. Single-instance check ───────────────────────────────
+    # ── 1. Single-instance check ───────────────────────────────
     if not ensure_single_instance():
         show_message_box(
             "压枪脚本",
