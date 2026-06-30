@@ -57,7 +57,21 @@ def main() -> None:
     # ── 4. Wire callbacks ──────────────────────────────────────
 
     # ── hooks → compensator ──
+    _toggle_last = 0.0
+
     def _toggle():
+        """Toggle compensator on/off with debounce.
+
+        Both the global pynput hook AND the TUI key handler may fire
+        for a single ~ keypress.  The debounce collapses rapid
+        duplicates (< 150 ms) into one toggle.
+        """
+        nonlocal _toggle_last
+        import time as _time
+        now = _time.time()
+        if now - _toggle_last < 0.15:
+            return
+        _toggle_last = now
         comp.active = not comp.active
         status = "开启" if comp.active else "关闭"
         logger.info(f"压枪 {status}")

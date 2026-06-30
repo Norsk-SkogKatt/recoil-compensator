@@ -49,6 +49,16 @@ class HooksManager:
 
     # ── start / stop ───────────────────────────────────────────
 
+    @property
+    def kb_running(self) -> bool:
+        """Whether the keyboard listener thread is alive."""
+        return bool(self._kb_listener and self._kb_listener.running)
+
+    @property
+    def mouse_running(self) -> bool:
+        """Whether the mouse listener thread is alive."""
+        return bool(self._mouse_listener and self._mouse_listener.running)
+
     def start(self) -> None:
         """Start both keyboard and mouse listeners."""
         if self._kb_listener is None or not self._kb_listener.running:
@@ -59,7 +69,12 @@ class HooksManager:
             )
             self._kb_listener.daemon = True
             self._kb_listener.start()
-            logger.info("Keyboard listener started")
+            # Give the thread a moment to initialise the hook
+            self._kb_listener.join(timeout=0.5)
+            if self._kb_listener.running:
+                logger.info("Keyboard listener started and running")
+            else:
+                logger.error("Keyboard listener FAILED to start (blocked by antivirus/group policy?)")
 
         if self._mouse_listener is None or not self._mouse_listener.running:
             self._mouse_listener = mouse.Listener(
@@ -68,7 +83,11 @@ class HooksManager:
             )
             self._mouse_listener.daemon = True
             self._mouse_listener.start()
-            logger.info("Mouse listener started")
+            self._mouse_listener.join(timeout=0.5)
+            if self._mouse_listener.running:
+                logger.info("Mouse listener started and running")
+            else:
+                logger.error("Mouse listener FAILED to start")
 
     def stop(self) -> None:
         """Stop both listeners."""
@@ -89,16 +108,18 @@ class HooksManager:
                 return
 
             vk = getattr(key, "vk", None)
-            if vk is None:
-                return
+            char = getattr(key, "char", None)
 
-            # ~ backtick toggle (VK 192)
-            if vk == VK_TILDE:
+            # ~ backtick toggle (match by VK first, then fall back to char)
+            if vk == VK_TILDE or char in ('`', '~'):
                 if self.on_toggle:
                     self.on_toggle()
                 return
 
-            # [ ] brackets (only when script is active; enforced by compensator)
+            # [ ] brackets – only proceed if we have a VK
+            if vk is None:
+                return
+
             if vk == VK_OPEN_BRACKET:
                 if self._shift_pressed:
                     if self.on_h_left_up:
