@@ -56,6 +56,13 @@ def main():
         "--onefile",
         "--name", output_name,
         "--add-data", add_data,
+        # Force-include ctypes C extension modules that PyInstaller
+        # sometimes misses on per-user Python installs.
+        "--hidden-import", "ctypes",
+        "--hidden-import", "ctypes.wintypes",
+        "--hidden-import", "_ctypes",
+        "--collect-all", "ctypes",
+        "--uac-admin",
         "--clean",
         "--noconfirm",
         "--log-level", "WARN",
