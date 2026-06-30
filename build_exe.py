@@ -79,9 +79,9 @@ def main():
 
     if os.path.isfile(dist_exe):
         shutil.copy2(dist_exe, final_exe)
-        print(f"[✓] EXE 已生成: {final_exe}")
+        print(f"[OK] EXE 已生成: {final_exe}")
     else:
-        print(f"[✗] 构建失败: {dist_exe} 不存在")
+        print(f"[FAIL] 构建失败: {dist_exe} 不存在")
         sys.exit(1)
 
     # ── clean up build artifacts ───────────────────────────────
@@ -97,9 +97,9 @@ def main():
             shutil.rmtree(path, ignore_errors=True)
             print(f"    - 删除: {path}")
 
-    print(f"[✓] 构建完成! 清理完毕。")
+    print(f"[OK] 构建完成! 清理完毕。")
     print(f"    执行: {final_exe}")
-    print(f"    设定檔路径: %APPDATA%\\压枪脚本\\config.json")
+    print(f"    设定档路径: %APPDATA%\\压枪脚本\\config.json")
 
 
 if __name__ == "__main__":
