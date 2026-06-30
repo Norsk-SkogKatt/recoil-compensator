@@ -82,54 +82,63 @@ class HooksManager:
 
     def _on_key_press(self, key) -> None:
         """Handle key-down events."""
-        # Track Shift state
-        if key in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r):
-            self._shift_pressed = True
-            return
+        try:
+            # Track Shift state
+            if key in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r):
+                self._shift_pressed = True
+                return
 
-        vk = getattr(key, "vk", None)
-        if vk is None:
-            return
+            vk = getattr(key, "vk", None)
+            if vk is None:
+                return
 
-        # ~ backtick toggle (VK 192)
-        if vk == VK_TILDE:
-            if self.on_toggle:
-                self.on_toggle()
-            return
+            # ~ backtick toggle (VK 192)
+            if vk == VK_TILDE:
+                if self.on_toggle:
+                    self.on_toggle()
+                return
 
-        # [ ] brackets (only when script is active; enforced by compensator)
-        if vk == VK_OPEN_BRACKET:
-            if self._shift_pressed:
-                if self.on_h_left_up:
-                    self.on_h_left_up()
-            else:
-                if self.on_vertical_down:
-                    self.on_vertical_down()
-            return
+            # [ ] brackets (only when script is active; enforced by compensator)
+            if vk == VK_OPEN_BRACKET:
+                if self._shift_pressed:
+                    if self.on_h_left_up:
+                        self.on_h_left_up()
+                else:
+                    if self.on_vertical_down:
+                        self.on_vertical_down()
+                return
 
-        if vk == VK_CLOSE_BRACKET:
-            if self._shift_pressed:
-                if self.on_h_right_up:
-                    self.on_h_right_up()
-            else:
-                if self.on_vertical_up:
-                    self.on_vertical_up()
-            return
+            if vk == VK_CLOSE_BRACKET:
+                if self._shift_pressed:
+                    if self.on_h_right_up:
+                        self.on_h_right_up()
+                else:
+                    if self.on_vertical_up:
+                        self.on_vertical_up()
+                return
+        except Exception as e:
+            logger.error(f"Key press handler error: {e}")
 
     def _on_key_release(self, key) -> None:
         """Handle key-up events (only needed for modifier tracking)."""
-        if key in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r):
-            self._shift_pressed = False
+        try:
+            if key in (keyboard.Key.shift, keyboard.Key.shift_l, keyboard.Key.shift_r):
+                self._shift_pressed = False
+        except Exception as e:
+            logger.error(f"Key release handler error: {e}")
 
     # ── mouse handler ──────────────────────────────────────────
 
     def _on_mouse_click(self, x, y, button, pressed) -> None:
         """Handle mouse button events."""
-        if button != mouse.Button.left:
-            return
-        if pressed:
-            if self.on_mouse_down:
-                self.on_mouse_down()
-        else:
-            if self.on_mouse_up:
-                self.on_mouse_up()
+        try:
+            if button != mouse.Button.left:
+                return
+            if pressed:
+                if self.on_mouse_down:
+                    self.on_mouse_down()
+            else:
+                if self.on_mouse_up:
+                    self.on_mouse_up()
+        except Exception as e:
+            logger.error(f"Mouse click handler error: {e}")

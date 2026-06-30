@@ -323,27 +323,19 @@ class TuiApp:
     # ── input handling ─────────────────────────────────────────
 
     def _handle_key(self, key: int) -> None:
-        """Handle keyboard input (non-input mode)."""
+        """Handle keyboard input (non-input mode).
+
+        NOTE: Hotkeys (~ [ ] Shift+[ Shift+]) are handled by the
+        GLOBAL pynput hooks in hooks.py, NOT here.  This avoids the
+        double-fire bug (hook + TUI both processing the same key).
+        Only mouse clicks are processed here.
+        """
         if key == curses.KEY_MOUSE:
             self._handle_mouse()
             return
 
-        # Keyboard shortcuts (alternative to mouse)
-        if key == ord('~') or key == 96:
-            if self.on_toggle:
-                self.on_toggle()
-        elif key == ord('[') or key == curses.KEY_LEFT:
-            if self.on_vertical_dec:
-                self.on_vertical_dec()
-        elif key == ord(']') or key == curses.KEY_RIGHT:
-            if self.on_vertical_inc:
-                self.on_vertical_inc()
-        elif key == ord('{') or key == ord('<'):
-            if self.on_h_left_dec:
-                self.on_h_left_dec()
-        elif key == ord('}') or key == ord('>'):
-            if self.on_h_right_inc:
-                self.on_h_right_inc()
+        # All other keyboard input deliberately ignored to prevent
+        # double-firing with the global pynput hook.
 
     def _handle_input_key(self, key: int) -> None:
         """Handle keyboard input when in text-input mode (new profile name)."""
