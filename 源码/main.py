@@ -1,19 +1,15 @@
 """
-压枪脚本 - Recoil Compensator v1.0 (All-in-one)
-================================================
+压枪脚本 - Recoil Compensator v1.0 (GUI)
+========================================
 ~ 开关          [ / ] 调垂直强度
 Shift+[ 向左移  Shift+] 向右移
 鼠标左键按住 = 补偿压枪
-鼠标点击按钮 = 操作设定
 
 水平负值 = 向左拉, 正值 = 向右拉
 """
 
-import atexit
 import ctypes
 import ctypes.wintypes
-import curses
-import curses.ascii
 import json
 import logging
 import os
@@ -21,14 +17,14 @@ import sys
 import threading
 import time
 import traceback
+import tkinter as tk
+from tkinter import ttk
 from typing import Optional, Callable
 
 from pynput import keyboard, mouse
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s", datefmt="%H:%M:%S"
 )
 logger = logging.getLogger("rc")
 
@@ -76,10 +72,7 @@ def _move_mouse(dx: int, dy: int) -> None:
     WPARAM = ctypes.wintypes.WPARAM
 
     class MOUSEINPUT(ctypes.Structure):
-        _fields_ = [
-            ("dx", LONG), ("dy", LONG), ("mouseData", DWORD),
-            ("dwFlags", DWORD), ("time", DWORD), ("dwExtraInfo", WPARAM),
-        ]
+        _fields_ = [("dx", LONG), ("dy", LONG), ("mouseData", DWORD), ("dwFlags", DWORD), ("time", DWORD), ("dwExtraInfo", WPARAM)]
 
     class INPUT(ctypes.Structure):
         _fields_ = [("type", DWORD), ("mi", MOUSEINPUT)]
@@ -94,9 +87,7 @@ def _move_mouse(dx: int, dy: int) -> None:
 # CONFIG MANAGER
 # ═══════════════════════════════════════════════════════════════
 
-DEFAULT_PROFILES = {
-    "默认": {"vertical": 10, "horizontal": 0},
-}
+DEFAULT_PROFILES = {"默认": {"vertical": 10, "horizontal": 0}}
 
 
 class ConfigManager:
@@ -123,16 +114,11 @@ class ConfigManager:
         self._save()
 
     def _migrate(self) -> None:
-        profiles = self._data.get("profiles", {})
-        changed = False
-        for name, prof in profiles.items():
+        for name, prof in self._data.get("profiles", {}).items():
             if "horizontal_left" in prof or "horizontal_right" in prof:
                 hl = prof.pop("horizontal_left", 0)
                 hr = prof.pop("horizontal_right", 0)
                 prof["horizontal"] = hr - hl
-                changed = True
-        if changed:
-            logger.info("Migrated old profile format -> single horizontal")
 
     def _save(self) -> None:
         tmp = self._path + ".tmp"
@@ -155,11 +141,7 @@ class ConfigManager:
 
     @property
     def current_profile(self) -> dict:
-        return dict(
-            self._data["profiles"].get(
-                self.current_profile_name, DEFAULT_PROFILES["默认"]
-            )
-        )
+        return dict(self._data["profiles"].get(self.current_profile_name, DEFAULT_PROFILES["默认"]))
 
     def list_profiles(self) -> list[str]:
         return list(self._data["profiles"].keys())
@@ -293,8 +275,8 @@ class Compensator:
 # ═══════════════════════════════════════════════════════════════
 
 VK_TILDE = 192
-VK_OB = 219   # [
-VK_CB = 221   # ]
+VK_OB = 219  # [
+VK_CB = 221  # ]
 
 
 class HooksManager:
@@ -302,12 +284,11 @@ class HooksManager:
         self._kb: Optional[keyboard.Listener] = None
         self._ms: Optional[mouse.Listener] = None
         self._shift = False
-
         self.on_toggle: Optional[Callable] = None
         self.on_v_up: Optional[Callable] = None
         self.on_v_down: Optional[Callable] = None
-        self.on_h_left: Optional[Callable] = None   # Shift+[ = left
-        self.on_h_right: Optional[Callable] = None   # Shift+] = right
+        self.on_h_left: Optional[Callable] = None
+        self.on_h_right: Optional[Callable] = None
         self.on_md: Optional[Callable] = None
         self.on_mu: Optional[Callable] = None
 
@@ -321,20 +302,17 @@ class HooksManager:
 
     def start(self) -> None:
         if not self.kb_ok:
-            self._kb = keyboard.Listener(
-                on_press=self._kp, on_release=self._kr, suppress=False
-            )
+            self._kb = keyboard.Listener(on_press=self._kp, on_release=self._kr, suppress=False)
             self._kb.daemon = True
             self._kb.start()
             self._kb.join(timeout=0.5)
-            logger.info(f"Kb-hook: {'OK' if self.kb_ok else 'FAILED'}")
-
+            logger.info(f"Kb: {'OK' if self.kb_ok else 'FAIL'}")
         if not self.mouse_ok:
             self._ms = mouse.Listener(on_click=self._mc, suppress=False)
             self._ms.daemon = True
             self._ms.start()
             self._ms.join(timeout=0.5)
-            logger.info(f"Mouse-hook: {'OK' if self.mouse_ok else 'FAILED'}")
+            logger.info(f"Mouse: {'OK' if self.mouse_ok else 'FAIL'}")
 
     def stop(self) -> None:
         if self.kb_ok:
@@ -354,20 +332,14 @@ class HooksManager:
                 return
             if vk is None:
                 return
-            if vk == VK_OB:  # [
-                if self._shift:
-                    self.on_h_left and self.on_h_left()
-                else:
-                    self.on_v_down and self.on_v_down()
+            if vk == VK_OB:
+                (self.on_h_left if self._shift else self.on_v_down) and (self.on_h_left() if self._shift else self.on_v_down())
                 return
-            if vk == VK_CB:  # ]
-                if self._shift:
-                    self.on_h_right and self.on_h_right()
-                else:
-                    self.on_v_up and self.on_v_up()
+            if vk == VK_CB:
+                (self.on_h_right if self._shift else self.on_v_up) and (self.on_h_right() if self._shift else self.on_v_up())
                 return
         except Exception as e:
-            logger.error(f"kp err: {e}")
+            logger.error(f"kp: {e}")
 
     def _kr(self, key) -> None:
         try:
@@ -385,61 +357,43 @@ class HooksManager:
             else:
                 self.on_mu and self.on_mu()
         except Exception as e:
-            logger.error(f"mc err: {e}")
+            logger.error(f"mc: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════
-# TUI (curses)
+# GUI (tkinter)
 # ═══════════════════════════════════════════════════════════════
 
-C_NORM = 1
-C_HL = 2
-C_GREEN = 3
-C_RED = 4
-C_YELLOW = 5
-C_BTN = 6
-C_BAR = 7
-C_HDR = 8
 
-T_TG = "tg"
-T_VD = "vd"
-T_VI = "vi"
-T_HD = "hd"
-T_HI = "hi"
-T_PS = "ps"
-T_PV = "pv"
-T_PN = "pn"
-T_PD = "pd"
-
-
-class Region:
-    __slots__ = ("tag", "y", "x0", "x1")
-
-    def __init__(self, tag: str, y: int, x0: int, x1: int):
-        self.tag = tag
-        self.y = y
-        self.x0 = x0
-        self.x1 = x1
-
-    def hit(self, my: int, mx: int) -> bool:
-        return self.y == my and self.x0 <= mx <= self.x1
-
-
-class TuiApp:
-    def __init__(self, comp: Compensator, cfg: ConfigManager):
+class GuiApp:
+    def __init__(self, comp: Compensator, cfg: ConfigManager, hooks: HooksManager):
         self.comp = comp
         self.cfg = cfg
-        self.scr: Optional[curses.window] = None
-        self.rows, self.cols = 24, 80
-        self.regions: list[Region] = []
+        self.hooks = hooks
 
-        self.active = False
-        self.v = 10
-        self.h = 0
-        self.profile = "默认"
-        self.kbok = False
-        self.mok = False
+        self.root = tk.Tk()
+        self.root.title("压枪脚本 v1.0")
+        self.root.resizable(False, False)
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        # icon
+        try:
+            self.root.iconbitmap(default="")
+        except Exception:
+            pass
 
+        # ── state snap ──
+        self._active = False
+        self._v = 10
+        self._h = 0
+        self._profile = "默认"
+
+        # ── GUI build ──
+        self._build()
+
+        # ── refresh timer ──
+        self._update_status()
+
+        # ── callbacks ──
         self.on_toggle: Optional[Callable] = None
         self.on_v_inc: Optional[Callable] = None
         self.on_v_dec: Optional[Callable] = None
@@ -451,349 +405,177 @@ class TuiApp:
         self.on_pdel: Optional[Callable] = None
         self.on_newp_submit: Optional[Callable[[str], None]] = None
 
-        self._inp = False
-        self._buf: list[str] = []
+    # ── build GUI ──
+    def _build(self) -> None:
+        f = ttk.Frame(self.root, padding=10)
+        f.grid(row=0, column=0, sticky="nsew")
 
-    def run(self, scr) -> None:
-        self.scr = scr
-        self._colours()
-        self._mouse()
-        self.rows, self.cols = scr.getmaxyx()
-        scr.timeout(200)
+        # -- status --
+        sf = ttk.LabelFrame(f, text="状态", padding=5)
+        sf.grid(row=0, column=0, columnspan=4, sticky="ew", pady=(0, 8))
 
-        while True:
-            self.rows, self.cols = scr.getmaxyx()
+        self._status_lbl = ttk.Label(sf, text="● 已关闭", font=("", 12, "bold"))
+        self._status_lbl.pack(side="left", padx=(5, 10))
 
-            # ── minimum terminal size check ─────────────────────
-            if self.cols < 50 or self.rows < 14:
-                scr.erase()
-                msg = f"视窗太小 ({self.cols}x{self.rows})"
-                msg2 = "请放大至至少 50x14"
-                try:
-                    scr.addstr(self.rows // 2 - 1, max(0, (self.cols - len(msg)) // 2),
-                               msg, curses.A_BOLD)
-                    scr.addstr(self.rows // 2, max(0, (self.cols - len(msg2)) // 2),
-                               msg2)
-                except curses.error:
-                    pass
-                scr.refresh()
-                key = scr.getch()
-                if key == 27:
-                    break
-                if key == curses.KEY_RESIZE:
-                    continue
-                continue
+        self._toggle_btn = ttk.Button(sf, text="开启", width=8, command=self._on_toggle_click)
+        self._toggle_btn.pack(side="right", padx=5)
 
-            self._snap()
-            self.regions.clear()
-            self._draw()
-            scr.refresh()
+        # -- vertical intensity --
+        ttk.Label(f, text="垂直强度:").grid(row=1, column=0, sticky="w", padx=(0, 5))
+        self._v_dec = ttk.Button(f, text="─", width=3, command=self._on_v_dec)
+        self._v_dec.grid(row=1, column=1, padx=2)
+        self._v_lbl = ttk.Label(f, text="10", width=5, anchor="center", font=("", 11))
+        self._v_lbl.grid(row=1, column=2, padx=5)
+        self._v_inc = ttk.Button(f, text="＋", width=3, command=self._on_v_inc)
+        self._v_inc.grid(row=1, column=3, padx=2)
 
-            key = scr.getch()
-            if key == curses.KEY_RESIZE:
-                self.rows, self.cols = scr.getmaxyx()
-                continue
-            if key == 27:
-                if self._inp:
-                    self._inp = False
-                    self._buf = []
-                else:
-                    break
-            if self._inp:
-                self._inkey(key)
+        # -- horizontal intensity --
+        ttk.Label(f, text="水平偏移:").grid(row=2, column=0, sticky="w", padx=(0, 5), pady=(5, 0))
+        self._h_dec = ttk.Button(f, text="─", width=3, command=self._on_h_dec)
+        self._h_dec.grid(row=2, column=1, padx=2, pady=(5, 0))
+        self._h_lbl = ttk.Label(f, text="0", width=5, anchor="center", font=("", 11))
+        self._h_lbl.grid(row=2, column=2, padx=5, pady=(5, 0))
+        self._h_inc = ttk.Button(f, text="＋", width=3, command=self._on_h_inc)
+        self._h_inc.grid(row=2, column=3, padx=2, pady=(5, 0))
+
+        # -- profile --
+        pf = ttk.LabelFrame(f, text="武器配置", padding=5)
+        pf.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
+
+        self._profile_lbl = ttk.Label(pf, text="默认", font=("", 10, "bold"))
+        self._profile_lbl.pack(side="left", padx=5)
+
+        btn_f = ttk.Frame(pf)
+        btn_f.pack(side="right")
+        for txt, cb in [("切换", self._on_pswitch), ("保存", self._on_psave),
+                        ("新建", self._on_pnew), ("删除", self._on_pdel)]:
+            ttk.Button(btn_f, text=txt, width=6, command=cb).pack(side="left", padx=2)
+
+        # -- key hint --
+        hint = ttk.Label(f, text="~ 开关  [↓垂直  ]↑垂直  Shift+[←  Shift+]→\n鼠标左键按住 = 压枪补偿",
+                         foreground="gray", justify="center")
+        hint.grid(row=4, column=0, columnspan=4, pady=(8, 0))
+
+        # -- new-profile input popup --
+        self._newp_win: Optional[tk.Toplevel] = None
+
+        # keyboard bindings
+        self.root.bind("<Key>", self._on_key)
+
+    # ── update loop ──
+    def _update_status(self) -> None:
+        try:
+            self._active = self.comp.active
+            self._v, self._h = self.comp.get_all()
+            self._profile = self.cfg.current_profile_name
+
+            # status
+            if self._active:
+                self._status_lbl.config(text="● 已开启", foreground="green")
+                self._toggle_btn.config(text="关闭")
             else:
-                self._nkey(key)
+                self._status_lbl.config(text="● 已关闭", foreground="red")
+                self._toggle_btn.config(text="开启")
 
-    def _colours(self) -> None:
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(C_NORM, -1, -1)
-        curses.init_pair(C_HL, curses.COLOR_CYAN, -1)
-        curses.init_pair(C_GREEN, curses.COLOR_GREEN, -1)
-        curses.init_pair(C_RED, curses.COLOR_RED, -1)
-        curses.init_pair(C_YELLOW, curses.COLOR_YELLOW, -1)
-        curses.init_pair(C_BTN, curses.COLOR_BLACK, curses.COLOR_WHITE)
-        curses.init_pair(C_BAR, curses.COLOR_GREEN, curses.COLOR_GREEN)
-        curses.init_pair(C_HDR, curses.COLOR_WHITE, curses.COLOR_BLUE)
-
-    def _mouse(self) -> None:
-        try:
-            curses.mousemask(curses.ALL_MOUSE_EVENTS | curses.REPORT_MOUSE_POSITION)
-        except curses.error:
+            # values
+            self._v_lbl.config(text=str(self._v))
+            self._h_lbl.config(text=str(self._h))
+            self._profile_lbl.config(text=self._profile)
+        except Exception:
             pass
-        if self.scr:
-            self.scr.keypad(True)
-
-    def _snap(self) -> None:
-        self.active = self.comp.active
-        self.v, self.h = self.comp.get_all()
-        self.profile = self.cfg.current_profile_name
-
-    @property
-    def lm(self) -> int:
-        return max(1, self.cols // 40)  # adaptive left margin
-
-    @property
-    def bw(self) -> int:
-        """Bar width — fills remaining horizontal space after fixed elements."""
-        # layout: lm(1-2) + label(6) + dec(3) + gap(1) + BAR + gap(1) + val(6) + gap(1) + inc(3)
-        fixed = self.lm + 6 + 3 + 1 + 1 + 6 + 1 + 3
-        return max(3, self.cols - fixed)
-
-    def _draw(self) -> None:
-        s = self.scr
-        s.erase()
-        y = 0
-        y = self._header(y)
-        y += 1
-        y = self._status(y)
-        y += 1
-        y = self._bars(y)
-        y += 1
-        y = self._profile(y)
-        y += 1
-        self._sep(y)
-        y += 1
-        self._help(y)
-        if self._inp:
-            self._input_box()
-
-    def _header(self, y: int) -> int:
-        t = " 压枪脚本 - Recoil Compensator v1.0 "
-        if self.cols < len(t) + 4:
-            t = " 压枪脚本 v1.0 "  # shorter fallback
-        try:
-            self.scr.attron(curses.color_pair(C_HDR))
-            self.scr.addstr(y, 0, " " * self.cols)
-            cx = max(0, (self.cols - len(t)) // 2)
-            self.scr.addstr(y, cx, t[: self.cols - cx])
-            self.scr.attroff(curses.color_pair(C_HDR))
-        except curses.error:
-            pass
-        return y + 1
-
-    def _status(self, y: int) -> int:
-        s = self.scr
-        lm = self.lm
-        try:
-            label = "● 开启中" if self.active else "○ 已关闭"
-            cl = C_GREEN if self.active else C_RED
-            s.attron(curses.color_pair(cl) | curses.A_BOLD)
-            s.addstr(y, lm, "状态: ")
-            s.addstr(y, lm + 6, label)
-            s.attroff(curses.color_pair(cl) | curses.A_BOLD)
-
-            btn = "[点击切换]"
-            bx = max(lm + 6 + len(label) + 2, self.cols - lm - len(btn))
-            if bx + len(btn) < self.cols - lm:
-                s.attron(curses.color_pair(C_BTN))
-                s.addstr(y, bx, btn)
-                s.attroff(curses.color_pair(C_BTN))
-                self.regions.append(Region(T_TG, y, bx, bx + len(btn) - 1))
-        except curses.error:
-            pass
-        return y + 1
-
-    def _draw_bar(self, y: int, x: int, w: int, val: int, mx: int = 100) -> None:
-        fill = int((abs(val) / mx) * w) if mx > 0 else 0
-        fill = min(fill, w)
-        try:
-            self.scr.addstr(y, x, "█" * fill + "░" * (w - fill))
-        except curses.error:
-            pass
-
-    def _bars(self, y: int) -> int:
-        s = self.scr
-        lm = self.lm
-        w = self.bw
-        items = [
-            ("垂直:", self.v, T_VD, T_VI),
-            ("水平:", self.h, T_HD, T_HI),
-        ]
-        # fixed positions relative to lm
-        lbl_end = lm + 5
-        dec_x = lbl_end + 1
-        bar_x = dec_x + 4  # "[-]" + 1 space
-        val_x = bar_x + w + 1
-        inc_x = val_x + 7  # " " + sign+3digits + " " = 7
-
-        for i, (lbl, val, td, ti) in enumerate(items):
-            cy = y + i
+        finally:
             try:
-                s.addstr(cy, lm, lbl)
-                # dec
-                db = "[-]"
-                s.attron(curses.color_pair(C_BTN))
-                s.addstr(cy, dec_x, db)
-                s.attroff(curses.color_pair(C_BTN))
-                self.regions.append(Region(td, cy, dec_x, dec_x + len(db) - 1))
-                # bar
-                self._draw_bar(cy, bar_x, w, val, 100)
-                # value:  -XXX,  +XXX, or   XX
-                if val < 0:
-                    vs = f"-{abs(val):3d}"
-                elif val > 0:
-                    vs = f"+{abs(val):3d}"
-                else:
-                    vs = f" {abs(val):3d}"
-                s.addstr(cy, val_x, vs)
-                # inc
-                ib = "[+]"
-                s.attron(curses.color_pair(C_BTN))
-                s.addstr(cy, inc_x, ib)
-                s.attroff(curses.color_pair(C_BTN))
-                self.regions.append(Region(ti, cy, inc_x, inc_x + len(ib) - 1))
-            except curses.error:
+                self.root.after(200, self._update_status)
+            except Exception:
                 pass
-        return y + len(items)
 
-    def _profile(self, y: int) -> int:
-        s = self.scr
-        lm = self.lm
-        try:
-            prof_label = f"当前武器: {self.profile}"
-            s.addstr(y, lm, prof_label[: self.cols - lm - 1])
-        except curses.error:
-            pass
+    # ── callbacks ──
+    def _on_toggle_click(self) -> None:
+        self.on_toggle and self.on_toggle()
 
-        by = y + 1
-        btns = [
-            (T_PS, " [切换] "),
-            (T_PV, " [保存] "),
-            (T_PN, " [新建] "),
-            (T_PD, " [删除] "),
-        ]
-        bx = lm
-        for tag, text in btns:
-            if bx + len(text) > self.cols - lm:
-                break  # stop if buttons overflow
-            try:
-                s.attron(curses.color_pair(C_BTN))
-                s.addstr(by, bx, text)
-                s.attroff(curses.color_pair(C_BTN))
-                self.regions.append(Region(tag, by, bx, bx + len(text) - 1))
-                bx += len(text) + 1
-            except curses.error:
-                pass
-        return by + 1
+    def _on_v_dec(self) -> None:
+        self.on_v_dec and self.on_v_dec()
 
-    def _sep(self, y: int) -> None:
-        if y >= self.rows - 1:
+    def _on_v_inc(self) -> None:
+        self.on_v_inc and self.on_v_inc()
+
+    def _on_h_dec(self) -> None:
+        self.on_h_dec and self.on_h_dec()
+
+    def _on_h_inc(self) -> None:
+        self.on_h_inc and self.on_h_inc()
+
+    def _on_pswitch(self) -> None:
+        self.on_pswitch and self.on_pswitch()
+
+    def _on_psave(self) -> None:
+        self.on_psave and self.on_psave()
+
+    def _on_pnew(self) -> None:
+        if self._newp_win and self._newp_win.winfo_exists():
+            self._newp_win.lift()
             return
-        try:
-            self.scr.addstr(y, 0, "─" * self.cols, curses.color_pair(C_NORM))
-        except curses.error:
-            pass
+        self._newp_win = tk.Toplevel(self.root)
+        self._newp_win.title("新建配置")
+        self._newp_win.resizable(False, False)
+        self._newp_win.transient(self.root)
+        self._newp_win.grab_set()
 
-    def _help(self, y: int) -> None:
-        lines = [
-            "~开关  [↓垂直  ]↑垂直  Shift+[←左  Shift+]→右",
-            "鼠标左键按住=压枪  Esc=退出  滑鼠点按钮操作",
-        ]
-        for i, line in enumerate(lines):
-            if y + i >= self.rows:
-                break
-            # truncate if too long
-            max_w = self.cols - self.lm - 1
-            display = line[:max_w] if len(line) > max_w else line
-            try:
-                self.scr.addstr(y + i, self.lm, display, curses.color_pair(C_NORM))
-            except curses.error:
-                pass
+        ttk.Label(self._newp_win, text="武器名字:").pack(padx=10, pady=(10, 0))
+        entry = ttk.Entry(self._newp_win, width=25)
+        entry.pack(padx=10, pady=5)
+        entry.focus_set()
 
-    def _input_box(self) -> None:
-        s = self.scr
-        y = min(self.rows - 4, max(0, self.rows - 4))
-        prompt = "输入新配置名称 (武器名字):"
-        inp = "".join(self._buf)
-        max_w = self.cols - self.lm - 2
-        try:
-            s.attron(curses.color_pair(C_HL) | curses.A_BOLD)
-            s.addstr(y, self.lm, prompt[:max_w])
-            s.attroff(curses.color_pair(C_HL) | curses.A_BOLD)
-            s.addstr(y + 1, self.lm + 1, (inp + "_")[:max_w])
-            s.addstr(y + 2, self.lm, "Enter=确认  Esc=取消")
-        except curses.error:
-            pass
+        def _submit():
+            name = entry.get().strip()
+            if name:
+                self.on_newp_submit and self.on_newp_submit(name)
+            self._newp_win.destroy()
+            self._newp_win = None
 
-    def _input_box(self) -> None:
-        s = self.scr
-        y = self.rows - 4
-        prompt = "输入新配置名称 (武器名字):"
-        inp = "".join(self._buf)
-        try:
-            s.attron(curses.color_pair(C_HL) | curses.A_BOLD)
-            s.addstr(y, self.lm, prompt)
-            s.attroff(curses.color_pair(C_HL) | curses.A_BOLD)
-            s.addstr(y + 1, self.lm + 2, inp + "_")
-            s.addstr(y + 2, self.lm, "Enter=确认  Esc=取消")
-        except curses.error:
-            pass
+        def _cancel():
+            self._newp_win.destroy()
+            self._newp_win = None
 
-    def _nkey(self, key: int) -> None:
-        if key == curses.KEY_MOUSE:
-            self._mclick()
-            return
-        if key in (ord("~"), 96):
+        bf = ttk.Frame(self._newp_win)
+        bf.pack(pady=(0, 10))
+        ttk.Button(bf, text="确认", command=_submit).pack(side="left", padx=5)
+        ttk.Button(bf, text="取消", command=_cancel).pack(side="left", padx=5)
+        entry.bind("<Return>", lambda e: _submit())
+        entry.bind("<Escape>", lambda e: _cancel())
+
+        cx = self.root.winfo_x() + self.root.winfo_width() // 2 - 75
+        cy = self.root.winfo_y() + self.root.winfo_height() // 2 - 50
+        self._newp_win.geometry(f"250x110+{cx}+{cy}")
+
+    def _on_pdel(self) -> None:
+        self.on_pdel and self.on_pdel()
+
+    def _on_key(self, event: tk.Event) -> None:
+        """Handle keyboard input in the GUI window."""
+        if event.keysym == "asciitilde" or event.keysym == "grave":
             self.on_toggle and self.on_toggle()
-        elif key in (ord("["), 219):
+        elif event.keysym == "bracketleft":
             self.on_v_dec and self.on_v_dec()
-        elif key in (ord("]"), 221):
+        elif event.keysym == "bracketright":
             self.on_v_inc and self.on_v_inc()
-        elif key in (ord("{"), 123):            # Shift+[ = left
-            self.on_h_dec and self.on_h_dec()    # dec = decrease = more left
-        elif key in (ord("}"), 125):            # Shift+] = right
-            self.on_h_inc and self.on_h_inc()    # inc = increase = more right
+        elif event.keysym == "braceleft":
+            self.on_h_dec and self.on_h_dec()
+        elif event.keysym == "braceright":
+            self.on_h_inc and self.on_h_inc()
 
-    def _inkey(self, key: int) -> None:
-        if key in (10, 13):
-            name = "".join(self._buf).strip()
-            if name and self.on_newp_submit:
-                self.on_newp_submit(name)
-            self._inp = False
-            self._buf = []
-        elif key == 27:
-            self._inp = False
-            self._buf = []
-        elif key in (curses.KEY_BACKSPACE, 127, 8):
-            if self._buf:
-                self._buf.pop()
-        elif 32 <= key <= 126:
-            self._buf.append(chr(key))
+    def _on_close(self) -> None:
+        self.root.quit()
+        self.root.destroy()
 
-    def _mclick(self) -> None:
-        try:
-            _, mx, my, _, _ = curses.getmouse()
-        except curses.error:
-            return
-        for r in self.regions:
-            if r.hit(my, mx):
-                self._route(r.tag)
-                return
-
-    def _route(self, tag: str) -> None:
-        m = {
-            T_TG: self.on_toggle,
-            T_VD: self.on_v_dec,
-            T_VI: self.on_v_inc,
-            T_HD: self.on_h_dec,
-            T_HI: self.on_h_inc,
-            T_PS: self.on_pswitch,
-            T_PV: self.on_psave,
-            T_PN: self._newp,
-            T_PD: self.on_pdel,
-        }
-        cb = m.get(tag)
-        cb and cb()
-
-    def _newp(self) -> None:
-        self._inp = True
-        self._buf = []
+    def run(self) -> None:
+        self.root.mainloop()
 
 
 # ═══════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════
+
 
 def main() -> None:
     if not _single_instance():
@@ -803,7 +585,7 @@ def main() -> None:
     cfg = ConfigManager()
     comp = Compensator()
     hooks = HooksManager()
-    app = TuiApp(comp, cfg)
+    app = GuiApp(comp, cfg, hooks)
 
     p = cfg.current_profile
     comp.set_all(p.get("vertical", 10), p.get("horizontal", 0))
@@ -830,13 +612,11 @@ def main() -> None:
             logger.info(f"V↓ {comp.vert}")
 
     def _h_left():
-        """Shift+[ → lower horizontal (more left)"""
         if comp.active:
             comp.horiz -= 1
             logger.info(f"H← {comp.horiz}")
 
     def _h_right():
-        """Shift+] → raise horizontal (more right)"""
         if comp.active:
             comp.horiz += 1
             logger.info(f"H→ {comp.horiz}")
@@ -864,15 +644,14 @@ def main() -> None:
         cfg.current_profile_name = names[idx]
         p2 = cfg.current_profile
         comp.set_all(p2.get("vertical", 10), p2.get("horizontal", 0))
-        logger.info(f"Profile→{names[idx]}")
+        logger.info(f"P→{names[idx]}")
 
     def _psave():
-        v, h = comp.get_all()
-        cfg.update_values(v, h)
+        cfg.update_values(*comp.get_all())
         logger.info(f"Saved:{cfg.current_profile_name}")
 
     def _pnew():
-        app._newp()
+        pass  # triggered by GUI popup
 
     def _pdel():
         n = cfg.current_profile_name
@@ -882,12 +661,11 @@ def main() -> None:
         cfg.delete_profile(n)
         p2 = cfg.current_profile
         comp.set_all(p2.get("vertical", 10), p2.get("horizontal", 0))
-        logger.info(f"Deleted:{n}")
+        logger.info(f"Del:{n}")
 
     def _on_newp(name: str):
-        v, h = comp.get_all()
-        cfg.upsert_profile(name, v, h)
-        logger.info(f"New profile:{name}")
+        cfg.upsert_profile(name, *comp.get_all())
+        logger.info(f"New:{name}")
 
     app.on_pswitch = _pswitch
     app.on_psave = _psave
@@ -897,18 +675,17 @@ def main() -> None:
 
     hooks.start()
     comp.start()
-    logger.info("Startup OK")
+    logger.info("OK")
 
     try:
-        curses.wrapper(app.run)
-    except KeyboardInterrupt:
-        pass
+        app.run()
+    except Exception:
+        logger.exception("GUI error")
     finally:
-        logger.info("Shutting down...")
         comp.stop()
         hooks.stop()
         cfg.update_values(*comp.get_all())
-        logger.info("Exited")
+        logger.info("Exit")
 
 
 def _entry() -> None:
@@ -918,7 +695,6 @@ def _entry() -> None:
         traceback.print_exc()
         print("\n" + "=" * 50)
         print("程式发生错误，上述为详细错误信息。")
-        print("请截图或记录后向开发者反馈。")
         print("=" * 50)
         print("\n按任意键关闭窗口...", end="", flush=True)
         try:

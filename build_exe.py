@@ -20,10 +20,8 @@ def main():
     output_name = "压枪脚本"
 
     # ── ensure required packages are installed ─────────────────
-    # windows-curses provides the 'curses' module, not 'windows_curses'
     required = {
         "pynput": "pynput",
-        "curses": "windows-curses",
     }
     missing = []
     for import_name, pkg_name in required.items():
@@ -52,7 +50,7 @@ def main():
     hidden = [
         "ctypes", "ctypes.wintypes", "_ctypes",
         "json", "threading", "logging", "time",
-        "traceback", "msvcrt", "curses",
+        "traceback", "msvcrt", "tkinter",
     ]
 
     cmd = [
