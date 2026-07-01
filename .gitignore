@@ -5,3 +5,5 @@ dist/
 *.spec
 *.exe
 
+
+*.log
