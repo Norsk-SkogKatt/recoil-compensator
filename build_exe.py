@@ -53,6 +53,15 @@ def main():
         "traceback", "msvcrt", "tkinter",
     ]
 
+    # ── manual cleanup before build ────────────────────────────
+    for p in [os.path.join(project_root, "build"),
+              os.path.join(project_root, "dist"),
+              os.path.join(project_root, f"{output_name}.spec")]:
+        if os.path.isfile(p):
+            os.remove(p)
+        elif os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--onefile",
@@ -62,7 +71,7 @@ def main():
     for mod in hidden:
         cmd += ["--hidden-import", mod]
     cmd += ["--collect-all", "ctypes"]
-    cmd += ["--clean", "--noconfirm", "--log-level", "WARN"]
+    cmd += ["--noconfirm", "--log-level", "WARN"]
     cmd += [os.path.join(src_dir, "main.py")]
 
     print(f"[*] Building {output_name}.exe ...")

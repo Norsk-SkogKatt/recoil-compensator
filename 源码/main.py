@@ -25,11 +25,10 @@ from glob import glob
 from pynput import keyboard, mouse
 
 # ── file-based logging (max 10 files, auto-rotation) ──
-_log_dir = os.path.dirname(os.path.abspath(__file__))  # same dir as exe
-# In PyInstaller bundle, __file__ is in temp dir; use exe dir instead
+_log_base = os.path.dirname(os.path.abspath(__file__))
 if getattr(sys, 'frozen', False):
-    _log_dir = os.path.dirname(sys.executable)
-
+    _log_base = os.path.dirname(sys.executable)
+_log_dir = os.path.join(_log_base, "log")
 os.makedirs(_log_dir, exist_ok=True)
 
 # Remove old log files if > 10
@@ -735,8 +734,7 @@ def _entry() -> None:
     except Exception as exc:
         logger.exception("Fatal error")
         # Also write to a crash log in the exe directory
-        crash_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else _log_dir
-        crash_path = os.path.join(crash_dir, "压枪脚本_崩溃.log")
+        crash_path = os.path.join(_log_dir, "压枪脚本_崩溃.log")
         try:
             with open(crash_path, "w", encoding="utf-8") as f:
                 traceback.print_exc(file=f)
