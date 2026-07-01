@@ -659,6 +659,7 @@ def main() -> None:
         comp.horiz += 1
         logger.info(f"H→ {comp.horiz}")
 
+    # ── HOOK callbacks (only when active) ──
     hooks.on_toggle = _toggle
     hooks.on_v_up = _v_up
     hooks.on_v_down = _v_down
@@ -667,11 +668,12 @@ def main() -> None:
     hooks.on_md = lambda: setattr(comp, "mouse_down", True)
     hooks.on_mu = lambda: setattr(comp, "mouse_down", False)
 
+    # ── GUI callbacks (ALWAYS work, no active check) ──
     app.on_toggle = _toggle
-    app.on_v_inc = _v_up
-    app.on_v_dec = _v_down
-    app.on_h_inc = _h_right
-    app.on_h_dec = _h_left
+    app.on_v_inc = lambda: (setattr(comp, "vert", comp.vert + 1) or logger.info(f"V↑ {comp.vert}"))
+    app.on_v_dec = lambda: (setattr(comp, "vert", comp.vert - 1) or logger.info(f"V↓ {comp.vert}"))
+    app.on_h_inc = lambda: (setattr(comp, "horiz", comp.horiz + 1) or logger.info(f"H→ {comp.horiz}"))
+    app.on_h_dec = lambda: (setattr(comp, "horiz", comp.horiz - 1) or logger.info(f"H← {comp.horiz}"))
 
     def _pswitch():
         names = cfg.list_profiles()
